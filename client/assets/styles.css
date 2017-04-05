@@ -1,0 +1,46 @@
+.backgroundImg {
+	background-image: url('./assets/images/background.jpg');
+	background-size: cover;
+	background-repeat: no-repeat;
+}
+
+.hr-rule {width: 100%; border: none;
+		  height: 1px; background-color: black;
+		  display: inline-block;}
+
+/*Utils*/
+.centered {text-align: center;}
+
+.small-margin-top {margin-top: 15px}
+
+.small-margin-bot {margin-bottom: 15px}
+
+.std-margin-top {margin-top: 30px}
+
+.std-margin-bot {margin-bottom: 30px}
+
+.big-margin-top {margin-top: 70px}
+
+.big-margin-bot {margin-bottom: 70px}
+
+.errorText {color: red;}
+/******/
+
+
+.companyHeader  {font-size: 36pt;}
+
+.logo_container {}
+
+.logo_img {width: 135px; height: 135px;}
+
+.currentQuestion {font-size: 24pt; color: green;}
+
+.user_selections_container {height: 140px;}
+
+.inner_face_container {display: inline-block;}
+
+.face_container {display: inline-block;}
+
+.face  {width: 120px; height: 135px; 
+		cursor: pointer; display: block; 
+		margin-left: 40px; margin-right: 40px;}

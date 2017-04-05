@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>Surveys</title>
+		<meta charset="utf-8">
+		<link rel="stylesheet" type="text/css" href="static/styles.css">
+		<script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.4.8/angular.min.js"></script>
+	</head>
+ 
+	<body class="backgroundImg">
+		<div ng-app="FiveQuestions" ng-controller="QuestionController">
+			<h2 class="companyHeader centered std-margin-top small-margin-bot">
+				{{configs.companyName}}
+			</h2>
+			
+			<div class="logo_container centered">
+				<img ng-src="{{configs.logoPath}}" alt="logo" class="logo_img">
+			</div>
+
+			<hr class="std-margin-top std-margin-bot hr-rule"/>
+					
+			<div class="currentQuestion centered std-margin-top big-margin-bot">
+				<!-- Question will be here -->
+				<span ng-show="displayOptions()">
+					{{currentQuestion()}}
+				</span>
+
+				<span ng-hide="displayOptions()">
+					{{displayStatus()}}
+				</span>
+			</div>
+			
+			<div class="user_selections_container centered">
+				<!-- Smiley faces will be here -->
+				<div ng-show="displayOptions()" class="inner_face_container">
+					<div ng-repeat="face in defaults.faces" class="face_container">
+						<img ng-src="{{face.path}}" alt="{{face.alt}}" ng-click="session.submitResponse(face.value);" class="face">
+					</div>
+				</div>
+			</div>
+
+			<div ng-show="connection.commitError" class="errorText">
+				Error occurred submitting survey...
+			</div>
+		</div>
+
+		<script type="text/javascript">
+			/*configurable timer to reset session*/
+			/*Define constants*/
+			var BAD_QUESTION_MSG = 'No surveys could be found';
+			var RESTARTING_MSG = "Restarting session";
+			var THANK_YOU_MSG = "Thank you!";
+			var WAITING_MSG = "Waiting for questions";
+			var ERROR_MSG = "An error occurred while fetching survey data";
+			var READY_MSG = "Ready!";
+			var QUESTIONS_PER_SESSION = 5;
+			var IMAGE_BASE_PATH = 'static/assets/images/';
+			var INACTIVITY_TIME = 9000;
+			var RETRY_TIME = 10000;
+			var STATUS_DISPLAY_TIME = 1500;
+
+			var questionsApp = angular.module('FiveQuestions', []);
+			questionsApp.controller('QuestionController', 
+									['$scope', 
+									 '$http',
+									 '$interval',
+									 'APIService',
+									 function($scope, $http, $interval, APIService) 
+			{
+				/*Define private functions*/
+				var setupScope = function(context={})
+				{/* Inits each required scope variable
+				  *
+				  */
+				  	$scope.configs = {
+				  		companyName: "Answer questions below",
+				  		logoPath:  IMAGE_BASE_PATH + 'Logo.png'
+				  	};
+
+				  	$scope.defaults = {
+				  		faces: 	[
+							{	
+								path: IMAGE_BASE_PATH + 'Excite.png', 
+								alt: 'Very Happy', 
+								value: 5
+							},
+							{	
+								path: IMAGE_BASE_PATH + 'Happy.png', 
+								alt: 'Happy', 
+								value: 4
+							},
+							{	
+								path: IMAGE_BASE_PATH + 'Meh.png', 
+								alt: 'Meh', 
+								value: 3
+							},
+							{	
+								path: IMAGE_BASE_PATH + 'Anger.png', 
+								alt: 'Unhappy', 
+								value: 2
+							},
+							{	
+								path: IMAGE_BASE_PATH + 'Fury.png', 
+								alt: 'Very unhappy', 
+								value: 1
+							}
+						]
+				  	};
+
+					$scope.connection = {
+						commitError: false,
+						surveyError: false
+					};
+					$scope.session = new createSession();
+				};
+				var setActiveQuestions = function(context={})
+				{/* Sets the active questions for this session, most likely by
+				  * performing an api call.
+				  */
+				  	var session = context.session;
+//				  	console.log("context: ");
+//				  	console.log(context.session);
+				  	if (!session)
+				  		session = $scope.session;
+
+//				  	console.log("scope: ");
+//				  	console.log($scope.session);
+
+					var chosen = session.questions;
+					
+					if (survey.questions)
+				  		survey.waitingForQuestions = false;
+
+/*
+				  	console.log("In set active questions");
+				  	console.log("waitingForQuestions: " + $scope.session.waitingForQuestions);
+				  	console.log("error: " + $scope.session.error);
+				  	console.log("pointer: " + $scope.session.pointer);
+*/
+					if (!survey.waitingForQuestions
+						&& !$scope.connection.surveyError
+						&& session.pointer == 0)
+					{//randomly selects questions from the question pool
+						survey.questions
+							.sort(function(a, b){return 0.5 - Math.random()});
+						chosen = survey.questions
+							.slice(0, QUESTIONS_PER_SESSION);
+					}
+					else
+					{
+						//maybe do something someday
+					}
+					session.questions = chosen;
+				};
+				var retryTimerFn = function()
+				{
+					console.log("Retry timer done!");
+					if (!survey || $scope.connection.surveyError || survey.waitingForQuestions)
+					{
+						console.log("creating new survey");
+						survey = createSurvey();
+					}
+				}
+				var statusTimerFn = function()
+				{/* Called to restart the session after a brief delay displaying
+				  * a status message such as "Session timed out" or "Thank you".
+				  */
+				  	console.log("Status timer done!");
+				  	if ($scope.session)
+						$scope.session.destroy();
+					$scope.session = new createSession();
+				}
+
+				var createSurvey = function(context={})
+				{
+					var buildQuestion = function(jsonQuestion)
+					{
+						return 	{
+							id: jsonQuestion.id,
+							questionText: jsonQuestion.questionText
+								};
+					};
+					var getQuestions = function(context={})
+					{/* Gets each question in context, most likely
+					  * by performing an api call.
+					  */
+					  	var error = function(response)
+					  	{//error function
+						  	console.log("ERROR: ");
+						  	console.log(response);
+							$scope.connection.surveyError = true;
+							context.survey.waitingForQuestions = true;
+							context.survey.questions = [];
+						};
+
+					  	APIService.getQuestions(function(response)
+						{//callback function
+							var questionsFound = [];
+							try 
+							{
+								console.log(response.data);
+								response.data.questions.forEach(function(q) 
+								{
+									questionsFound.push(buildQuestion(q));
+								});
+								context.survey.questions = questionsFound;
+								$scope.connection.surveyError = false;
+							}
+							catch(e)
+							{
+								console.log(e);
+								error(response.data);
+							}
+							setActiveQuestions();
+						},
+						error);
+					};
+					var newSurvey = new function()
+					{//Survey object
+						this.error = false;
+						this.waitingForQuestions = true;
+						this.questions = [];
+					}();
+					if (survey)
+						Object.assign(newSurvey, survey, {questions: []});
+					getQuestions({survey: newSurvey});
+					errorTimer = $interval(retryTimerFn, RETRY_TIME, 1);
+					return newSurvey;
+				};
+				
+				/*Define object constructors*/
+				var createSession = function(context={})
+				{/* Creates an object to Represent an active session with a customer 
+				  * 
+				  */
+				  	var timerfn = function()
+				 	{
+				 		console.log("Session timed out");
+				 		newSession.timedout = true;
+				 		newSession.commitSession();
+				 	};
+				 	var commitCallback = function (response)
+				 	{
+				 		$scope.connection.commitError = false;
+				 	}
+				 	var commitError = function(response)
+				 	{
+				 		$scope.connection.commitError = true;
+				 	}
+				 	var newSession = new function()
+				 	{
+					  	this.questions = [];
+					  	this.pointer = 0;
+
+					  	this.sessionStart = Date.now();
+					  	this.lastInteraction = this.sessionStart;
+					 	this.responses 	= [];
+					 	this.followup 	= false;
+					 	this.sequence 	= false;
+					 	this.complete 	= false;
+					 	this.timedout 	= false;
+					 	this.terminated = false;				 
+					 	this.activityTimer = undefined;
+					 	this.getCurrentQuestion = function()
+					 	{
+					 		if (this.questions
+					 			&& newSession.pointer >= 0 
+								&& newSession.pointer < newSession.questions.length)
+					 		{
+								return $scope.session.questions[$scope.session.pointer];
+							}
+							else 
+								return null;
+					 	};
+						this.submitResponse = function(responseVal)
+						{/* Called to record the response to an active question.
+						  *
+						  */
+							if (this.activityTimer)
+					 			$interval.cancel(this.activityTimer);
+
+							var question = this.getCurrentQuestion();
+							if (question === null)
+							{
+								//do something
+								return;
+							}
+
+							var now = Date.now();
+					 		this.responses.push(
+					 					{
+					 						id: question.id,
+					 						value: responseVal,
+					 						delay: now - this.lastInteraction,
+					 					});
+							this.pointer++;
+							if (this.pointer >= this.questions.length)
+								this.complete = true;
+							this.lastInteraction = now;
+					 		this.activityTimer = $interval(timerfn, INACTIVITY_TIME, 1);
+
+							if (this.complete)
+							{
+								console.log("committing session: Completed");
+								this.commitSession();
+							}
+							else if ($scope.session.terminated)
+							{
+								console.log("committing session: Terminated");
+								this.commitSession();	
+							}//else if {additional cases here <----}
+						}
+						this.commitSession = function()
+						{/* Clears the customer session, shuffles active questions, 
+						  * and makes the database update api call.
+						  */
+						  	//clear timers if present
+						  	if (statusTimer)
+						  		$interval.cancel(statusTimer);
+						  	if (this.activityTimer)
+					 			$interval.cancel(this.activityTimer);
+
+							//commit to database!
+							APIService.commitSession(this, commitCallback, commitError);
+							console.log("Session committed")
+							//reset the session
+							if (this.complete || this.timedout)
+							{
+								console.log("Status timer starting");
+								statusTimer = $interval(statusTimerFn, STATUS_DISPLAY_TIME, 1);
+							}
+							else
+							{
+								console.log("Creating new session");
+								$scope.session = new createSession();
+							}
+						};
+					 	this.destroy = function()
+					 	{
+							if (this.activityTimer)
+					 			$interval.cancel(this.activityTimer);
+					 		this.terminated = true;
+					 	}
+				 	}();
+				 	setActiveQuestions({session: newSession});
+				 	return newSession;
+				};
+
+				/*Define $scope functions*/
+				$scope.currentQuestion = function()
+				{/* Returns the text of the current active questions or an error
+				  * message if no such question exists.
+				  */
+				  	var question = $scope.session.getCurrentQuestion();
+					if (question)
+					{
+						return question.questionText;
+					}
+					else 
+					{
+						return BAD_QUESTION_MSG;
+					}
+				}
+				$scope.displayOptions = function()
+				{/* Returns true if the session is ready for user input and the faces
+				  * should be displayed
+				  */
+				  	if ($scope.connection.surveyError 
+				  		|| survey.waitingForQuestions
+				  		|| $scope.session.complete
+				  		|| $scope.session.terminated
+				  		|| $scope.session.timedout
+				  		|| !$scope.session.questions.length)
+				  	{
+				  		return false;
+				  	}
+				  	else
+				  	{
+				  		return true;
+				  	}
+				}
+				$scope.displayStatus = function()
+				{
+					if ($scope.connection.surveyError)
+						return ERROR_MSG;
+					else if (survey.waitingForQuestions ||
+						($scope.session && !$scope.session.questions.length))
+						return WAITING_MSG;
+					else if ($scope.session && $scope.session.complete)
+						return THANK_YOU_MSG;
+					else if ($scope.session && $scope.session.timedout)
+						return RESTARTING_MSG;
+					else if ($scope.session && $scope.session.terminated)
+						return RESTARTING_MSG;
+					else 
+						return READY_MSG;
+				}
+
+				/*Define private variables*/
+				var errorTimer = undefined;
+				var statusTimer = undefined;
+				var survey = createSurvey();
+
+				/*Define private functions*/
+				setupScope();
+			}]);
+			
+			questionsApp.factory('APIService', ['$http', function($http) 
+			{
+				var API_LOCATION = "http://localhost:8080";
+
+
+				var APIServiceConstructor = function()
+				{
+					this.getQuestions = function(callback, err)
+					{
+						var api_method = '/getQuestions';
+						$http.get(API_LOCATION + api_method,
+							{
+								timeout: 3000
+							}).then(callback, err);
+					}
+
+					this.commitSession = function(session, callback, err)
+					{
+						var api_method = '/commitSurvey';
+						data =	{
+							sessionStart: session.sessionStart,
+							responses: session.responses,
+							complete: session.complete,
+							timedout: session.timedout,
+							terminated: session.terminated,
+							length: QUESTIONS_PER_SESSION,
+							interval: INACTIVITY_TIME
+						};
+
+						$http.put(API_LOCATION + api_method, data, {
+								timeout: 30000
+						}).then(callback, err);
+					}
+				};
+				return new APIServiceConstructor();
+			}]);
+
+		</script>
+	</body>
+</html>
