@@ -8,9 +8,11 @@ var server;
 
 var startup = function() {				
 	server = app.listen(SERVER_PORT, SERVER_ADDRESS, function() {
-		console.log("Routing Server running at http://%s:%s", SERVER_ADDRESS, SERVER_PORT)
+		console.log("Server running at http://%s:%s", SERVER_ADDRESS, SERVER_PORT)
 	});
 }
+
+// Use express to serve index.htm and survey.htm
 
 /* TODO localhost:8080/getQuestions
  * GET request
@@ -25,5 +27,7 @@ var startup = function() {
  * somehow for future use. Send appropriate error
  * messages if/when things don't work as expected.
  */ 
+
+ // And whatever others you need to present data from surveys.htm
 
 startup();
